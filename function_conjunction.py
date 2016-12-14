@@ -26,7 +26,10 @@ class Compute(object):
     @staticmethod
     def select_func(leaves):
         count = Counter([i[0] for i in leaves])
-        return count.most_common(1)[0][0]
+        func = count.most_common(1)[0][0]
+        argSet = set([tuple(i[1]) for i in leaves if i[0] == func])
+        args = [list(i) for i in argSet]
+        return func, args
 
     @classmethod
     def serial(cls, computations, funcs):
@@ -58,25 +61,25 @@ class Compute(object):
     def batch_eval(cls, trees, funcs):
 
         if not any([i.val for i in trees]):
-            return [trees(i).val for i in sorted(trees, key=lambda x:x)]
+            return [trees(i).val for i in sorted(trees)]
 
         subtrees = [i for i in trees if not i.val]
         leaves = set([])
         for tree in subtrees:
             leaves = leaves.union(tree.collect_leaves())
 
-        func = cls.select_func(leaves)
-        cls.eval_leaves(func, leaves, funcs[func])
+        func, args = cls.select_func(leaves)
+        cls.eval_leaves(func, args, funcs[func])
 
         for tree in subtrees:
-            leaves = tree.prune(leaves, cls.memo)
+            tree.prune(leaves, cls.memo)
         return cls.batch_eval(trees, funcs)
 
     @classmethod
-    def eval_leaves(cls, func, leaves, f):
-        for oper, arg in leaves:
-            if oper == func:
-                cls.memo[func][arg] = f(arg)
+    def eval_leaves(cls, func, args, f):
+        batched = f[args]
+        for key, value in zip(args, batched):
+            cls.memo[key] = value
 
     @classmethod
     def compute(cls, computations=['f(g(h(2,3),5),g(g(3),h(4)),10)'],
@@ -111,6 +114,15 @@ class Tree(object):
             leaves.add(leaf)
         return leaves
 
+    def prune(self, known,  node=None):
+        if not node:
+            node = self.root
+        for child in node.children:
+            if child.is_leaf():
+                if 
+                pass
+                # if 
+
 
 class Node(object):
     """
@@ -120,6 +132,7 @@ class Node(object):
         self.f = f
         self.parent = parent
         self.children = []
+        self.val = None
         for i in args:
             if isinstance(i, ParseResults):
                 self.children.append(Node(i, self))
@@ -127,7 +140,7 @@ class Node(object):
                 self.children.append(i)
 
     def is_leaf(self):
-        return any([isinstance(child, Node) for child in self.children]) or\
+        return not any([isinstance(child, Node) for child in self.children]) or\
                not self.children
 
 
