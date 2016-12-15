@@ -32,64 +32,63 @@ class Compute(object):
         return func, args
 
     @classmethod
-    def serial(cls, computations, funcs):
+    def serial(cls, computations):
         output = []
         for computation in computations:
             parsed_args = cls.format_args(computation)
-            output.append(cls.serial_eval(parsed_args, funcs))
+            output.append(cls.serial_eval(parsed_args))
         return output
 
     @classmethod
-    def serial_eval(cls, parsed_args, funcs):
+    def serial_eval(cls, parsed_args):
         f, args = parsed_args[0], parsed_args[1]
-        print f, args
         parsed = []
         for i in args:
             if isinstance(i, ParseResults):
-                parsed.append(cls.serial_eval(i, funcs))
+                parsed.append(cls.serial_eval(i))
             elif i.isdigit():
                 parsed.append(int(i))
         return cls.funcs[f](parsed)
 
     @classmethod
-    def batch(cls, computations, funcs):
+    def batch(cls, computations):
         trees = {ind: Tree(cls.format_args(i))
                  for ind, i in enumerate(computations)}
-        cls.eval_batch(trees, funcs)
+        return cls.batch_eval(trees)
 
     @classmethod
-    def batch_eval(cls, trees, funcs):
-
-        if not any([i.root.val for i in trees.itervalues()]):
+    def batch_eval(cls, trees):
+        if all([i.root.val for i in trees.itervalues()]):
             return [trees[i].root.val for i in sorted(trees)]
-
-        subtrees = [i for i in trees if not i.root.val]
+        subtrees = [i for i in trees.itervalues() if not i.root.val]
         leaves = set([])
 
         for tree in subtrees:
             leaves = leaves.union(tree.collect_leaves())
 
         func, args = cls.select_func(leaves)
-        cls.eval_leaves(func, args, funcs[func])
+        cls.eval_leaves(func, args)
 
         for tree in subtrees:
-            tree.prune(leaves, cls.memo)
+            tree.prune(cls.memo)
 
-        return cls.batch_eval(trees, funcs)
+        return cls.batch_eval(trees)
 
     @classmethod
-    def eval_leaves(cls, func, args, f):
-        batched = f[args]
+    def eval_leaves(cls, func, args):
+        print args
+        args = [[int(j) for j in i] for i in args]
+        batched = cls.funcs[func](args)
+        print func, args, batched
         for key, value in zip(args, batched):
-            cls.memo[key] = value
+            cls.memo[func][tuple(key)] = value
 
     @classmethod
     def compute(cls, computations=['f(g(h(2,3),5),g(g(3),h(4)),10)'],
                 functionRegistry={'f': sum, 'g': sum, 'h': max},
                 evalType='serial'):
         cls.funcs = functionRegistry
-        return cls.__dict__[evalType].__func__(cls, computations,
-                                               functionRegistry)
+        return cls.__dict__[evalType].__func__(cls, computations)
 
 
 class Tree(object):
@@ -106,7 +105,7 @@ class Tree(object):
         if not node:
             node = self.root
 
-        if node.is_leaf():
+        if not node.is_leaf():
             print node.f, node.children
             for child in node.children:
                 if isinstance(child, Node):
@@ -119,8 +118,6 @@ class Tree(object):
     def prune(self, known, node=None):
         if not node:
             node = self.root
-        print node, node.children
-        print '*'*10
         for child in node.children:
             if isinstance(child, Node):
                 self.prune(known, child)
@@ -169,6 +166,20 @@ class TestFuncConj(unittest.TestCase):
     def test_serial_zeros(self):
         result = Compute.compute(['f()', 'g()'])
         self.assertEqual(result, [0, 0])
+
+
+def batch_sum(lstlst):
+    output = []
+    for i in lstlst:
+        output.append(sum(i))
+    return output
+
+
+def batch_max(lstlst):
+    output = []
+    for i in lstlst:
+        output.append(max(i))
+    return output
 
 if __name__ == "__main__":
     unittest.main()
