@@ -58,7 +58,7 @@ class Compute(object):
 
     @classmethod
     def batch_eval(cls, trees):
-        if all([i.root.val for i in trees.itervalues()]):
+        if all([i.root.val is not None for i in trees.itervalues()]):
             return [trees[i].root.val for i in sorted(trees)]
         subtrees = [i for i in trees.itervalues() if not i.root.val]
         leaves = set([])
@@ -76,10 +76,8 @@ class Compute(object):
 
     @classmethod
     def eval_leaves(cls, func, args):
-        print args
         args = [[int(j) for j in i] for i in args]
         batched = cls.funcs[func](args)
-        print func, args, batched
         for key, value in zip(args, batched):
             cls.memo[func][tuple(key)] = value
 
@@ -121,17 +119,15 @@ class Tree(object):
         for child in node.children:
             if isinstance(child, Node):
                 self.prune(known, child)
-
-        if node.is_leaf() and tuple(int(i) for i in node.children) in known[node.f]:
+        if all([not node.children, node.is_leaf(), () in known[node.f]]):
+            node.val = known[node.f][()]
+            if node.parent:
+                node.parent.children[:] = [i.val if isinstance(i, Node) and i.val is not None else i for i in node.parent.children]
+        elif node.is_leaf() and tuple(int(i) for i in node.children) in known[node.f]:
             node.val = known[node.f][tuple(int(i) for i in node.children)]
             if node.parent:
-                node.parent.children[:] = [i.val if isinstance(i, Node) and i.val else i for i in node.parent.children]
+                node.parent.children[:] = [i.val if isinstance(i, Node) and i.val is not None else i for i in node.parent.children]
 
-        # node.children[:] = [str(known[node.f][tuple(i)]) if not isinstance(i, Node)\
-                            # and tuple(i) in known else i for i in node.children]
-        # if node.parent and node.is_leaf():
-            # if not any([isinstance(i, Node) for i in node.children]):
-                # node.val = node.children[0]
 
 class Node(object):
     """
