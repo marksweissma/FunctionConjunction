@@ -167,12 +167,21 @@ class Compute(object):
 
 class Tree(object):
     """
+    Tree for evaluating nested function calls and arguments
+
+    :parm pyparsing.ParseResults parsed args: parsed computation
     """
     def __init__(self, parsed_args):
         self.root = Node(parsed_args, None)
 
     def collect_leaves(self, node=None, leaves=None):
         """
+        Collect leaves of tree
+
+        :param Node node:  node in tree
+        :param set leaves: collected leaves
+        :return: collected leaves
+        :rtype: set
         """
         if not leaves:
             leaves = set([])
@@ -189,6 +198,13 @@ class Tree(object):
         return leaves
 
     def prune(self, known, node=None):
+        """
+        Prune tree with evaluating Nodes by information in known\
+                expanded nodes have Node.val attribute assigned
+
+        :param defaultdict.str.tuple known: map for returns of functions
+        :param Node node: current location
+        """
         if not node:
             node = self.root
         for child in node.children:
@@ -209,8 +225,12 @@ class Tree(object):
 
 class Node(object):
     """
+    Node for storing a parsed computation function and argument
+
+    :param pyparsing.ParseResults parsed_args: parsed computation
+    :param Node parent: reference to parent node
     """
-    def __init__(self, parsed_args, parent):
+    def __init__(self, parsed_args, parent=None):
         f, args = parsed_args[0], parsed_args[1]
         self.f = f
         self.parent = parent
@@ -226,6 +246,12 @@ class Node(object):
                     pass
 
     def is_leaf(self):
+        """
+        Check if node is a leaf in tree, none of it's children are type(Node)
+
+        :return: if  node is leaf
+        :rtype: bool
+        """
         return not any([isinstance(child, Node) for child in self.children])
 
 
