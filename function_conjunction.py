@@ -2,7 +2,7 @@ import unittest
 from collections import defaultdict, Counter
 from pyparsing import (Forward, Word, alphas, alphanums,
                        nums, ZeroOrMore, Literal, Group,
-                       ParseResults)
+                       ParseResults, Empty)
 
 
 class Compute(object):
@@ -18,7 +18,7 @@ class Compute(object):
         lparen = Literal("(").suppress()
         rparen = Literal(")").suppress()
         expression = Forward()
-        arg = Group(expression) | identifier | integer | ""
+        arg = Group(expression) | identifier | integer | Empty()
         args = arg + ZeroOrMore("," + arg)
         expression << functor + Group(lparen + args + rparen)
         return expression.parseString(aStr)
@@ -60,11 +60,12 @@ class Compute(object):
     @classmethod
     def batch_eval(cls, trees, funcs):
 
-        if not any([i.val for i in trees]):
-            return [trees(i).val for i in sorted(trees)]
+        if not any([i.root.val for i in trees.itervalues()]):
+            return [trees[i].root.val for i in sorted(trees)]
 
-        subtrees = [i for i in trees if not i.val]
+        subtrees = [i for i in trees if not i.root.val]
         leaves = set([])
+
         for tree in subtrees:
             leaves = leaves.union(tree.collect_leaves())
 
@@ -73,6 +74,7 @@ class Compute(object):
 
         for tree in subtrees:
             tree.prune(leaves, cls.memo)
+
         return cls.batch_eval(trees, funcs)
 
     @classmethod
@@ -114,15 +116,25 @@ class Tree(object):
             leaves.add(leaf)
         return leaves
 
-    def prune(self, known,  node=None):
+    def prune(self, known, node=None):
         if not node:
             node = self.root
+        print node, node.children
+        print '*'*10
         for child in node.children:
-            if child.is_leaf():
-                if 
-                pass
-                # if 
+            if isinstance(child, Node):
+                self.prune(known, child)
 
+        if node.is_leaf() and tuple(int(i) for i in node.children) in known[node.f]:
+            node.val = known[node.f][tuple(int(i) for i in node.children)]
+            if node.parent:
+                node.parent.children[:] = [i.val if isinstance(i, Node) and i.val else i for i in node.parent.children]
+
+        # node.children[:] = [str(known[node.f][tuple(i)]) if not isinstance(i, Node)\
+                            # and tuple(i) in known else i for i in node.children]
+        # if node.parent and node.is_leaf():
+            # if not any([isinstance(i, Node) for i in node.children]):
+                # node.val = node.children[0]
 
 class Node(object):
     """
