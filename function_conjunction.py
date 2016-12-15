@@ -33,7 +33,7 @@ class Compute(object):
     @staticmethod
     def select_func(leaves):
         """
-        Select function to evaluate and collect argument
+        Select function to evaluate and collect arguments
 
         :param set.tuple.(str, list.int) leaves: function argument pairs
         :return: FunctionRegisty keye
@@ -49,6 +49,13 @@ class Compute(object):
 
     @classmethod
     def serial(cls, computations):
+        """
+        Evaluation of each computation in serial
+
+        :param list.str computations: list of string computations to execute
+        :return: computation results
+        :rtype: list
+        """
         output = []
         for computation in computations:
             parsed_args = cls._format_args(computation)
@@ -57,6 +64,13 @@ class Compute(object):
 
     @classmethod
     def _serial_eval(cls, parsed_args):
+        """
+        Evaulate computation specified by parsed_args in serial
+
+        :param pyparsing.ParseResults parsed_args: computation
+        :return: function applied on args
+        """
+
         f, args = parsed_args[0], parsed_args[1]
         parsed = []
         for i in args:
@@ -71,12 +85,30 @@ class Compute(object):
 
     @classmethod
     def batch(cls, computations):
+        """
+        Evaluation of each computation in batch
+
+        :param list.str computations: list of string computations to execute
+        :return: computation results
+        :rtype: list
+        """
         trees = {ind: Tree(cls._format_args(i))
                  for ind, i in enumerate(computations)}
-        return cls.batch_eval(trees)
+        output = cls._batch_eval(trees)
+
+        if cls.verbose:
+            print 'batch calls: ' + str(cls.batchCalls)
+        return output
 
     @classmethod
-    def batch_eval(cls, trees):
+    def _batch_eval(cls, trees):
+        """
+        Evaulate computations in each tree containing parsed arguments
+
+        :param dict trees: dictionary of pyparsing.ParseResults computation
+        :return: computation results
+        :rtype: list
+        """
         if all([i.root.val is not None for i in trees.itervalues()]):
             return [trees[i].root.val for i in sorted(trees)]
         subtrees = [i for i in trees.itervalues() if i.root.val is None]
@@ -86,15 +118,21 @@ class Compute(object):
             leaves = leaves.union(tree.collect_leaves())
 
         func, args = cls.select_func(leaves)
-        cls.eval_leaves(func, args)
+        cls._eval_leaves(func, args)
 
         for tree in subtrees:
             tree.prune(cls.memo)
 
-        return cls.batch_eval(trees)
+        return cls._batch_eval(trees)
 
     @classmethod
-    def eval_leaves(cls, func, args):
+    def _eval_leaves(cls, func, args):
+        """
+        Apply function to batch args, store results in cls.memo
+
+        :param str func: key in FunctionRegistry for function
+        :param list.list args: batch args
+        """
         cls.batchCalls += 1
         args = [[int(j) for j in i] for i in args]
         batched = cls.funcs[func](args)
@@ -104,16 +142,27 @@ class Compute(object):
     @classmethod
     def compute(cls, computations=['f(g(h(2,3),5),g(g(3),h(4)),10)'],
                 functionRegistry={'f': sum, 'g': sum, 'h': max},
-                evalType='serial', verbose=True):
+                evalType='serial', verbose=False):
+        """
+        Evaluate computations using functions supplied in functionRegistry\
+                with either serial or batch methods
+
+        :param list.str computations: computations to evaluate
+        :param dict functionRegistry: map strings in computations to functions
+        :param str evalType: method for evaluation. serial requires functions\
+                in registry to accept a list.int, batch requires functions\
+                in registry to accept list.list.int
+        :parm bool verbose: output additional information during run\
+                currently only prints number of batch calls if batch evalType
+        :return: evaluated computations
+        :rtype: list
+        """
 
         cls.funcs = functionRegistry
         cls.verbose = verbose
         cls.memo = defaultdict(dict)
         cls.batchCalls = 0
-        output = cls.__dict__[evalType].__func__(cls, computations)
-        if verbose:
-            print 'batch calls: ' + str(cls.batchCalls)
-        return output
+        return cls.__dict__[evalType].__func__(cls, computations)
 
 
 class Tree(object):
@@ -177,8 +226,6 @@ class Node(object):
                     pass
 
     def is_leaf(self):
-        # return not any([isinstance(child, Node) for child in self.children]) or\
-               # not self.children
         return not any([isinstance(child, Node) for child in self.children])
 
 
@@ -213,6 +260,7 @@ class TestSerialFuncConj(unittest.TestCase):
     def test_nested1(self):
         result = Compute.compute(['f(g(1))'])
         self.assertEqual(result, [1])
+
 
 def batch_sum(lstlst):
     output = []
