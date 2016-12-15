@@ -2,18 +2,25 @@ import unittest
 from collections import defaultdict, Counter
 from pyparsing import (Forward, Word, alphas, alphanums,
                        nums, ZeroOrMore, Literal, Group,
-                       ParseResults, Empty)
+                       ParseResults, Empty, Combine, Optional)
 
 
 class Compute(object):
     """
+    Class for computing composed functions
     """
-    memo = defaultdict(dict)
-
     @staticmethod
-    def format_args(aStr):
+    def _format_args(aStr):
+        """
+        Process composed function string into nested pyparsing.ParseResults
+
+        :param str aStr: string to parse
+        :return: formatting result
+        :rtype: pyparsing.ParseResults
+        """
+
         identifier = Word(alphas, alphanums + "_")
-        integer = Word(nums)
+        integer = Combine(Optional(Literal('-')) + Word(nums))
         functor = identifier
         lparen = Literal("(").suppress()
         rparen = Literal(")").suppress()
@@ -25,6 +32,15 @@ class Compute(object):
 
     @staticmethod
     def select_func(leaves):
+        """
+        Select function to evaluate and collect argument
+
+        :param set.tuple.(str, list.int) leaves: function argument pairs
+        :return: FunctionRegisty keye
+        :rtype: str
+        :return arguments for function to operate on
+        :rtype: list.list.int
+        """
         count = Counter([i[0] for i in leaves])
         func = count.most_common(1)[0][0]
         argSet = set([tuple(i[1]) for i in leaves if i[0] == func])
@@ -35,24 +51,27 @@ class Compute(object):
     def serial(cls, computations):
         output = []
         for computation in computations:
-            parsed_args = cls.format_args(computation)
-            output.append(cls.serial_eval(parsed_args))
+            parsed_args = cls._format_args(computation)
+            output.append(cls._serial_eval(parsed_args))
         return output
 
     @classmethod
-    def serial_eval(cls, parsed_args):
+    def _serial_eval(cls, parsed_args):
         f, args = parsed_args[0], parsed_args[1]
         parsed = []
         for i in args:
             if isinstance(i, ParseResults):
-                parsed.append(cls.serial_eval(i))
-            elif i.isdigit():
-                parsed.append(int(i))
+                parsed.append(cls._serial_eval(i))
+            else:
+                try:
+                    parsed.append(int(i))
+                except ValueError:
+                    pass
         return cls.funcs[f](parsed)
 
     @classmethod
     def batch(cls, computations):
-        trees = {ind: Tree(cls.format_args(i))
+        trees = {ind: Tree(cls._format_args(i))
                  for ind, i in enumerate(computations)}
         return cls.batch_eval(trees)
 
@@ -60,7 +79,7 @@ class Compute(object):
     def batch_eval(cls, trees):
         if all([i.root.val is not None for i in trees.itervalues()]):
             return [trees[i].root.val for i in sorted(trees)]
-        subtrees = [i for i in trees.itervalues() if not i.root.val]
+        subtrees = [i for i in trees.itervalues() if i.root.val is None]
         leaves = set([])
 
         for tree in subtrees:
@@ -76,6 +95,7 @@ class Compute(object):
 
     @classmethod
     def eval_leaves(cls, func, args):
+        cls.batchCalls += 1
         args = [[int(j) for j in i] for i in args]
         batched = cls.funcs[func](args)
         for key, value in zip(args, batched):
@@ -84,9 +104,16 @@ class Compute(object):
     @classmethod
     def compute(cls, computations=['f(g(h(2,3),5),g(g(3),h(4)),10)'],
                 functionRegistry={'f': sum, 'g': sum, 'h': max},
-                evalType='serial'):
+                evalType='serial', verbose=True):
+
         cls.funcs = functionRegistry
-        return cls.__dict__[evalType].__func__(cls, computations)
+        cls.verbose = verbose
+        cls.memo = defaultdict(dict)
+        cls.batchCalls = 0
+        output = cls.__dict__[evalType].__func__(cls, computations)
+        if verbose:
+            print 'batch calls: ' + str(cls.batchCalls)
+        return output
 
 
 class Tree(object):
@@ -104,7 +131,6 @@ class Tree(object):
             node = self.root
 
         if not node.is_leaf():
-            print node.f, node.children
             for child in node.children:
                 if isinstance(child, Node):
                     leaves = self.collect_leaves(child, leaves)
@@ -119,6 +145,9 @@ class Tree(object):
         for child in node.children:
             if isinstance(child, Node):
                 self.prune(known, child)
+
+        # Empty argument case, these can be combined by
+        # Modifying types in arg parse !!!TODO
         if all([not node.children, node.is_leaf(), () in known[node.f]]):
             node.val = known[node.f][()]
             if node.parent:
@@ -141,28 +170,49 @@ class Node(object):
         for i in args:
             if isinstance(i, ParseResults):
                 self.children.append(Node(i, self))
-            elif i.isdigit():
-                self.children.append(i)
+            else:
+                try:
+                    self.children.append(int(i))
+                except ValueError:
+                    pass
 
     def is_leaf(self):
-        return not any([isinstance(child, Node) for child in self.children]) or\
-               not self.children
+        # return not any([isinstance(child, Node) for child in self.children]) or\
+               # not self.children
+        return not any([isinstance(child, Node) for child in self.children])
 
 
-class TestFuncConj(unittest.TestCase):
+class TestSerialFuncConj(unittest.TestCase):
 
-    def test_serial_kwarg(self):
-        result = Compute.compute()
+    def test_kwarg(self):
+
+        computations = ['f(g(h(2,3),5),g(g(3),h(4)),10)']
+        functionRegistry = {'f': sum, 'g': sum, 'h': max},
+        evalType = 'serial'
+        result = Compute.compute(computations=computations,
+                                 functionRegistry=functionRegistry,
+                                 evalType=evalType)
         self.assertEqual(result, [25])
 
-    def test_serial_zero(self):
+    def test_zero(self):
         result = Compute.compute(['f()'])
         self.assertEqual(result, [0])
 
-    def test_serial_zeros(self):
+    def test_zeros(self):
         result = Compute.compute(['f()', 'g()'])
         self.assertEqual(result, [0, 0])
 
+    def test_nested_zero(self):
+        result = Compute.compute(['f(g())'])
+        self.assertEqual(result, [0])
+
+    def test_nested_zeros(self):
+        result = Compute.compute(['f(g())', 'f(g())'])
+        self.assertEqual(result, [0, 0])
+
+    def test_nested1(self):
+        result = Compute.compute(['f(g(1))'])
+        self.assertEqual(result, [1])
 
 def batch_sum(lstlst):
     output = []
